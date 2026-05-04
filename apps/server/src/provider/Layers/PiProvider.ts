@@ -118,6 +118,13 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
     const resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
     yield* Effect.tryPromise(() => resourceLoader.reload());
 
+    // Flush pending provider registrations from extensions (normally done by
+    // ExtensionRunner.bindCore(), which only runs inside AgentSession)
+    const extResult = resourceLoader.getExtensions();
+    for (const { name, config } of extResult.runtime.pendingProviderRegistrations) {
+      modelRegistry.registerProvider(name, config as unknown as Parameters<typeof modelRegistry.registerProvider>[1]);
+    }
+
     const models = modelRegistry.getAvailable();
 
     let configuredCount = 0;
