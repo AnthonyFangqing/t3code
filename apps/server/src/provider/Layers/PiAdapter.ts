@@ -57,6 +57,8 @@ interface PiSessionContext {
   activeTurnId: TurnId | undefined;
   stopped: Ref.Ref<boolean>;
   sessionManager: SessionManager;
+  /** Tracks last emitted text per assistant message to compute true deltas */
+  emittedText: string;
 }
 
 function nowIso() { return new Date().toISOString(); }
@@ -194,6 +196,7 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
       switch (event.type) {
         case "agent_start": {
           ctx.activeTurnId = TurnId.make(`pi-turn-${ctx.turnNumber}`);
+          ctx.emittedText = "";
           yield* emit(mkEvent(threadId, "turn.started", {
             model: ctx.agentSession.model ? `${ctx.agentSession.model.provider}/${ctx.agentSession.model.id}` : undefined,
           }, ctx.activeTurnId));
@@ -228,8 +231,24 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
         }
         case "message_update": {
           if (event.message.role !== "assistant") break;
-          const txt = extractText(event.message.content);
-          if (txt) yield* emit(mkEvent(threadId, "content.delta", { streamKind: "assistant_text" as const, delta: txt }, tid));
+          const full = extractText(event.message.content);
+          if (!full) break;
+          const prev = ctx.emittedText;
+          if (full.startsWith(prev)) {
+            const delta = full.slice(prev.length);
+            ctx.emittedText = full;
+            if (delta) {
+              yield* emit(mkEvent(threadId, "content.delta", {
+                streamKind: "assistant_text" as const, delta,
+              }, tid));
+            }
+          } else {
+            // Text was replaced (e.g. compaction or retry) — emit full new text
+            ctx.emittedText = full;
+            yield* emit(mkEvent(threadId, "content.delta", {
+              streamKind: "assistant_text" as const, delta: full,
+            }, tid));
+          }
           break;
         }
         case "message_end": {
@@ -350,6 +369,7 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
         },
         agentSession, sessionScope, unsubscribeEvents: () => {},
         turnNumber: 0, activeTurnId: undefined, stopped, sessionManager,
+        emittedText: "",
       };
 
       // Install approval hook based on runtime mode
