@@ -130,6 +130,13 @@ function createBaseServerConfig(): ServerConfig {
           serverPassword: "",
           customModels: [],
         },
+        pi: {
+          enabled: true,
+          homePath: "",
+          defaultProvider: "",
+          defaultModel: "",
+          customModels: [],
+        },
       },
     },
   };
