@@ -89,6 +89,28 @@ function toolItemType(toolName: string): string {
   return "dynamic_tool_call";
 }
 
+function toolDetail(toolName: string, args: unknown): string | undefined {
+  if (!args || typeof args !== "object") return undefined;
+  const a = args as Record<string, unknown>;
+  switch (toolName) {
+    case "bash":
+      return typeof a.command === "string" ? a.command : undefined;
+    case "read":
+      return typeof a.path === "string" ? a.path : undefined;
+    case "edit":
+    case "write":
+      return typeof a.path === "string" ? a.path : undefined;
+    case "find":
+      return typeof a.path === "string" ? a.path : undefined;
+    case "grep":
+      return typeof a.pattern === "string" ? a.pattern : undefined;
+    case "ls":
+      return typeof a.path === "string" ? a.path : undefined;
+    default:
+      return undefined;
+  }
+}
+
 export interface PiAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
   readonly homePath: string | undefined;
@@ -257,7 +279,11 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
           break;
         }
         case "tool_execution_start": {
-          yield* emit(mkEvent(threadId, "item.started", { itemType: toolItemType(event.toolName), status: "inProgress", title: event.toolName }, tid, event.toolCallId));
+          const detail = toolDetail(event.toolName, event.args);
+          yield* emit(mkEvent(threadId, "item.started", {
+            itemType: toolItemType(event.toolName), status: "inProgress", title: event.toolName,
+            ...(detail ? { detail } : {}),
+          }, tid, event.toolCallId));
           break;
         }
         case "tool_execution_end": {
