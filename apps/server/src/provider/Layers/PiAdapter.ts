@@ -33,6 +33,7 @@ import {
   ModelRegistry,
   AuthStorage,
   SettingsManager,
+  getAgentDir,
 } from "@mariozechner/pi-coding-agent";
 import type { Model } from "@mariozechner/pi-ai";
 
@@ -127,7 +128,7 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
     const runtimeEvents = yield* Queue.unbounded<ProviderRuntimeEvent>();
     const sessions = new Map<ThreadId, PiSessionContext>();
     const piHome = options?.homePath ?? piSettings.homePath ?? undefined;
-    const agentDir = piHome ?? serverConfig.cwd;
+    const agentDir = piHome ?? getAgentDir();
 
     const emit = (event: ProviderRuntimeEvent) => Queue.offer(runtimeEvents, event).pipe(Effect.asVoid);
 
