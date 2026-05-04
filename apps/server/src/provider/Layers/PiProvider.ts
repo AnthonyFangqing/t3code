@@ -47,7 +47,9 @@ const DEFAULT_PI_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities
   ],
 });
 
-function flattenPiModels(models: ReadonlyArray<{ provider: string; id: string; name?: string }>): ReadonlyArray<ServerProviderModel> {
+function flattenPiModels(
+  models: ReadonlyArray<{ provider: string; id: string; name?: string }>,
+): ReadonlyArray<ServerProviderModel> {
   const result: ServerProviderModel[] = [];
   for (const model of models) {
     const name = nonEmptyTrimmed(model.name ?? model.id);
@@ -64,9 +66,7 @@ function flattenPiModels(models: ReadonlyArray<{ provider: string; id: string; n
   return result;
 }
 
-export const makePendingPiProvider = (
-  piSettings: PiSettings,
-): ServerProviderDraft => {
+export const makePendingPiProvider = (piSettings: PiSettings): ServerProviderDraft => {
   const checkedAt = new Date().toISOString();
 
   if (!piSettings.enabled) {
@@ -100,83 +100,92 @@ export const makePendingPiProvider = (
   });
 };
 
-export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function* (): Effect.fn.Return<ServerProviderDraft> {
-  const checkedAt = new Date().toISOString();
+export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(
+  function* (): Effect.fn.Return<ServerProviderDraft> {
+    const checkedAt = new Date().toISOString();
 
-  const result = yield* Effect.exit(Effect.gen(function* () {
-    const { ModelRegistry, AuthStorage, SettingsManager, DefaultResourceLoader, getAgentDir } =
-      yield* Effect.tryPromise(() => import("@mariozechner/pi-coding-agent"));
+    const result = yield* Effect.exit(
+      Effect.gen(function* () {
+        const { ModelRegistry, AuthStorage, SettingsManager, DefaultResourceLoader, getAgentDir } =
+          yield* Effect.tryPromise(() => import("@mariozechner/pi-coding-agent"));
 
-    const agentDir = getAgentDir();
-    const cwd = process.cwd();
+        const agentDir = getAgentDir();
+        const cwd = process.cwd();
 
-    const authStorage = AuthStorage.create(undefined);
-    const modelRegistry = ModelRegistry.create(authStorage, undefined);
-    const settingsManager = SettingsManager.create(cwd, agentDir);
+        const authStorage = AuthStorage.create(undefined);
+        const modelRegistry = ModelRegistry.create(authStorage, undefined);
+        const settingsManager = SettingsManager.create(cwd, agentDir);
 
-    // Load extensions so extension-registered model providers are included
-    const resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
-    yield* Effect.tryPromise(() => resourceLoader.reload());
+        // Load extensions so extension-registered model providers are included
+        const resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
+        yield* Effect.tryPromise(() => resourceLoader.reload());
 
-    // Flush pending provider registrations from extensions (normally done by
-    // ExtensionRunner.bindCore(), which only runs inside AgentSession)
-    const extResult = resourceLoader.getExtensions();
-    for (const { name, config } of extResult.runtime.pendingProviderRegistrations) {
-      modelRegistry.registerProvider(name, config as unknown as Parameters<typeof modelRegistry.registerProvider>[1]);
-    }
+        // Flush pending provider registrations from extensions (normally done by
+        // ExtensionRunner.bindCore(), which only runs inside AgentSession)
+        const extResult = resourceLoader.getExtensions();
+        for (const { name, config } of extResult.runtime.pendingProviderRegistrations) {
+          modelRegistry.registerProvider(
+            name,
+            config as unknown as Parameters<typeof modelRegistry.registerProvider>[1],
+          );
+        }
 
-    const models = modelRegistry.getAvailable();
+        const models = modelRegistry.getAvailable();
 
-    let configuredCount = 0;
-    for (const model of models) {
-      const authResult = yield* Effect.tryPromise(() => modelRegistry.getApiKeyAndHeaders(model));
-      if (authResult.ok) configuredCount += 1;
-    }
+        let configuredCount = 0;
+        for (const model of models) {
+          const authResult = yield* Effect.tryPromise(() =>
+            modelRegistry.getApiKeyAndHeaders(model),
+          );
+          if (authResult.ok) configuredCount += 1;
+        }
 
-    const serverModels = providerModelsFromSettings(
-      flattenPiModels(models),
-      PROVIDER,
-      [],
-      DEFAULT_PI_MODEL_CAPABILITIES,
+        const serverModels = providerModelsFromSettings(
+          flattenPiModels(models),
+          PROVIDER,
+          [],
+          DEFAULT_PI_MODEL_CAPABILITIES,
+        );
+
+        return buildServerProvider({
+          presentation: PI_PRESENTATION,
+          enabled: true,
+          checkedAt,
+          models: serverModels,
+          probe: {
+            installed: true,
+            version: "0.72.1",
+            status: configuredCount > 0 ? "ready" : "warning",
+            auth: {
+              status: configuredCount > 0 ? "authenticated" : "unknown",
+              type: "pi",
+            },
+            message:
+              configuredCount > 0
+                ? `${configuredCount} Pi provider${configuredCount === 1 ? "" : "s"} available (${models.length} models total).`
+                : `Pi is available but no providers have configured API keys. Run 'pi login' or configure API keys in ~/.pi/auth.json.`,
+          },
+        });
+      }),
     );
 
-    return buildServerProvider({
-      presentation: PI_PRESENTATION,
-      enabled: true,
-      checkedAt,
-      models: serverModels,
-      probe: {
-        installed: true,
-        version: "0.72.1",
-        status: configuredCount > 0 ? "ready" : "warning",
-        auth: {
-          status: configuredCount > 0 ? "authenticated" : "unknown",
-          type: "pi",
+    if (result._tag === "Failure") {
+      const message = `Failed to probe Pi: ${result.cause instanceof Error ? result.cause.message : String(result.cause)}`;
+      return buildServerProvider({
+        presentation: PI_PRESENTATION,
+        enabled: true,
+        checkedAt,
+        models: [],
+        probe: {
+          installed: false,
+          version: null,
+          status: "error",
+          auth: { status: "unknown" },
+          message,
         },
-        message:
-          configuredCount > 0
-            ? `${configuredCount} Pi provider${configuredCount === 1 ? "" : "s"} available (${models.length} models total).`
-            : `Pi is available but no providers have configured API keys. Run 'pi login' or configure API keys in ~/.pi/auth.json.`,
-      },
-    });
-  }));
+      });
+    }
 
-  if (result._tag === "Failure") {
-    const message = `Failed to probe Pi: ${result.cause instanceof Error ? result.cause.message : String(result.cause)}`;
-    return buildServerProvider({
-      presentation: PI_PRESENTATION,
-      enabled: true,
-      checkedAt,
-      models: [],
-      probe: {
-        installed: false,
-        version: null,
-        status: "error",
-        auth: { status: "unknown" },
-        message,
-      },
-    });
-  }
-
-  return result.value;
-});
+    return result.value;
+  },
+);
