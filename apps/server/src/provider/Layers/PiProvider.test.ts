@@ -12,7 +12,9 @@ import { Effect } from "effect";
 
 const PROVIDER = ProviderDriverKind.make("pi");
 
-function defaultPiSettings(overrides: Partial<typeof PiSettings.Type> = {}): typeof PiSettings.Type {
+function defaultPiSettings(
+  overrides: Partial<typeof PiSettings.Type> = {},
+): typeof PiSettings.Type {
   return Schema.decodeSync(PiSettings)({
     enabled: true,
     ...overrides,
@@ -22,9 +24,7 @@ function defaultPiSettings(overrides: Partial<typeof PiSettings.Type> = {}): typ
 describe("PiProvider", () => {
   describe("makePendingPiProvider", () => {
     it("returns disabled snapshot when disabled", () => {
-      const snapshot = makePendingPiProvider(
-        defaultPiSettings({ enabled: false }),
-      );
+      const snapshot = makePendingPiProvider(defaultPiSettings({ enabled: false }));
       expect(snapshot.enabled).toBe(false);
       expect(snapshot.status).toBe("disabled");
       expect(snapshot.message).toContain("disabled");
