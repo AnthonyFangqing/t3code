@@ -1,5 +1,16 @@
 # AGENTS.md
 
+## Fork Setup
+
+This is a fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
+
+- **`main`** — exact mirror of upstream. Never commit here.
+- **`main-with-all-custom-changes`** — all our changes (Pi provider, CI runner fixes, etc.). Rebase onto `main` when upstream releases.
+
+To see everything we changed: `git log main..main-with-all-custom-changes --oneline`
+To sync upstream: `git checkout main && git pull fork main && git checkout main-with-all-custom-changes && git rebase main`
+To cut a release: tag on `main-with-all-custom-changes` (`git tag v0.X.0 && git push fork v0.X.0`)
+
 ## Task Completion Requirements
 
 - All of `bun fmt`, `bun lint`, and `bun typecheck` must pass before considering tasks completed.
