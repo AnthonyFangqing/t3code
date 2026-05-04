@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - main
+      - main-with-all-custom-changes
 
 jobs:
   quality:
