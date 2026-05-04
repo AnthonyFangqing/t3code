@@ -1,8 +1,8 @@
 /**
  * PiProvider — health check and model discovery for the Pi provider.
  *
- * Uses Pi's ModelRegistry for model discovery. Maps Pi's model format to
- * t3code's ServerProviderModel.
+ * Uses Pi's ModelRegistry for model discovery, loading extensions first
+ * so that extension-registered model providers are included.
  *
  * @module PiProvider
  */
@@ -104,18 +104,24 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
   const checkedAt = new Date().toISOString();
 
   const result = yield* Effect.exit(Effect.gen(function* () {
-    const { ModelRegistry, AuthStorage } = yield* Effect.tryPromise(() => import("@mariozechner/pi-coding-agent"));
+    const { ModelRegistry, AuthStorage, SettingsManager, DefaultResourceLoader, getAgentDir } =
+      yield* Effect.tryPromise(() => import("@mariozechner/pi-coding-agent"));
 
-    const models = yield* Effect.tryPromise(async () => {
-      const authStorage = AuthStorage.create(undefined);
-      const modelRegistry = ModelRegistry.create(authStorage, undefined);
-      return modelRegistry.getAvailable();
-    });
+    const agentDir = getAgentDir();
+    const cwd = process.cwd();
+
+    const authStorage = AuthStorage.create(undefined);
+    const modelRegistry = ModelRegistry.create(authStorage, undefined);
+    const settingsManager = SettingsManager.create(cwd, agentDir);
+
+    // Load extensions so extension-registered model providers are included
+    const resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
+    yield* Effect.tryPromise(() => resourceLoader.reload());
+
+    const models = modelRegistry.getAvailable();
 
     let configuredCount = 0;
     for (const model of models) {
-      const authStorage = AuthStorage.create(undefined);
-      const modelRegistry = ModelRegistry.create(authStorage, undefined);
       const authResult = yield* Effect.tryPromise(() => modelRegistry.getApiKeyAndHeaders(model));
       if (authResult.ok) configuredCount += 1;
     }
