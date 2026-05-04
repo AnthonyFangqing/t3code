@@ -62,7 +62,8 @@ async function runPiPrompt(input: {
   agentDir: string;
   model: { provider: string; id: string } | undefined;
 }): Promise<string> {
-  const { createAgentSession, SessionManager, AuthStorage, ModelRegistry, SettingsManager } = await import("@mariozechner/pi-coding-agent");
+  const { createAgentSession, SessionManager, AuthStorage, ModelRegistry, SettingsManager } =
+    await import("@mariozechner/pi-coding-agent");
 
   const authStorage = AuthStorage.create(undefined);
   const modelRegistry = ModelRegistry.create(authStorage, undefined);
@@ -77,7 +78,10 @@ async function runPiPrompt(input: {
   if (!selectedModel) {
     for (const m of models) {
       const auth = await modelRegistry.getApiKeyAndHeaders(m);
-      if (auth.ok) { selectedModel = m; break; }
+      if (auth.ok) {
+        selectedModel = m;
+        break;
+      }
     }
   }
 
@@ -122,179 +126,171 @@ export const makePiTextGeneration = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig;
   const agentDir = serverConfig.cwd;
 
-  const generateCommitMessage = Effect.fn("PiTextGeneration.generateCommitMessage")(
-    function* (input: Parameters<TextGenerationShape["generateCommitMessage"]>[0]) {
-      const { prompt, outputSchema } = buildCommitMessagePrompt({
-        branch: input.branch,
-        stagedSummary: input.stagedSummary,
-        stagedPatch: input.stagedPatch,
-        includeBranch: input.includeBranch === true,
-      });
+  const generateCommitMessage = Effect.fn("PiTextGeneration.generateCommitMessage")(function* (
+    input: Parameters<TextGenerationShape["generateCommitMessage"]>[0],
+  ) {
+    const { prompt, outputSchema } = buildCommitMessagePrompt({
+      branch: input.branch,
+      stagedSummary: input.stagedSummary,
+      stagedPatch: input.stagedPatch,
+      includeBranch: input.includeBranch === true,
+    });
 
-      const model = yield* Effect.promise(() =>
-        resolvePiTextModel(input.modelSelection, agentDir),
-      );
+    const model = yield* Effect.promise(() => resolvePiTextModel(input.modelSelection, agentDir));
 
-      const rawOutput = yield* Effect.tryPromise({
-        try: () => runPiPrompt({ cwd: input.cwd, prompt, agentDir, model }),
-        catch: (cause) =>
+    const rawOutput = yield* Effect.tryPromise({
+      try: () => runPiPrompt({ cwd: input.cwd, prompt, agentDir, model }),
+      catch: (cause) =>
+        new TextGenerationError({
+          operation: "generateCommitMessage",
+          detail: `Pi text generation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          cause,
+        }),
+    });
+
+    const generated = yield* Schema.decodeEffect(Schema.fromJsonString(outputSchema))(
+      extractJsonObject(rawOutput),
+    ).pipe(
+      Effect.catchTag("SchemaError", (cause) =>
+        Effect.fail(
           new TextGenerationError({
             operation: "generateCommitMessage",
-            detail: `Pi text generation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+            detail: "Pi returned invalid structured output.",
             cause,
           }),
-      });
-
-      const generated = yield* Schema.decodeEffect(Schema.fromJsonString(outputSchema))(
-        extractJsonObject(rawOutput),
-      ).pipe(
-        Effect.catchTag("SchemaError", (cause) =>
-          Effect.fail(
-            new TextGenerationError({
-              operation: "generateCommitMessage",
-              detail: "Pi returned invalid structured output.",
-              cause,
-            }),
-          ),
         ),
-      );
+      ),
+    );
 
-      return {
-        subject: sanitizeCommitSubject(generated.subject),
-        body: generated.body.trim(),
-        ...("branch" in generated && typeof generated.branch === "string"
-          ? { branch: sanitizeFeatureBranchName(generated.branch) }
-          : {}),
-      };
-    },
-  );
+    return {
+      subject: sanitizeCommitSubject(generated.subject),
+      body: generated.body.trim(),
+      ...("branch" in generated && typeof generated.branch === "string"
+        ? { branch: sanitizeFeatureBranchName(generated.branch) }
+        : {}),
+    };
+  });
 
-  const generatePrContent = Effect.fn("PiTextGeneration.generatePrContent")(
-    function* (input: Parameters<TextGenerationShape["generatePrContent"]>[0]) {
-      const { prompt, outputSchema } = buildPrContentPrompt({
-        baseBranch: input.baseBranch,
-        headBranch: input.headBranch,
-        commitSummary: input.commitSummary,
-        diffSummary: input.diffSummary,
-        diffPatch: input.diffPatch,
-      });
+  const generatePrContent = Effect.fn("PiTextGeneration.generatePrContent")(function* (
+    input: Parameters<TextGenerationShape["generatePrContent"]>[0],
+  ) {
+    const { prompt, outputSchema } = buildPrContentPrompt({
+      baseBranch: input.baseBranch,
+      headBranch: input.headBranch,
+      commitSummary: input.commitSummary,
+      diffSummary: input.diffSummary,
+      diffPatch: input.diffPatch,
+    });
 
-      const model = yield* Effect.promise(() =>
-        resolvePiTextModel(input.modelSelection, agentDir),
-      );
+    const model = yield* Effect.promise(() => resolvePiTextModel(input.modelSelection, agentDir));
 
-      const rawOutput = yield* Effect.tryPromise({
-        try: () => runPiPrompt({ cwd: input.cwd, prompt, agentDir, model }),
-        catch: (cause) =>
+    const rawOutput = yield* Effect.tryPromise({
+      try: () => runPiPrompt({ cwd: input.cwd, prompt, agentDir, model }),
+      catch: (cause) =>
+        new TextGenerationError({
+          operation: "generatePrContent",
+          detail: `Pi text generation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          cause,
+        }),
+    });
+
+    const generated = yield* Schema.decodeEffect(Schema.fromJsonString(outputSchema))(
+      extractJsonObject(rawOutput),
+    ).pipe(
+      Effect.catchTag("SchemaError", (cause) =>
+        Effect.fail(
           new TextGenerationError({
             operation: "generatePrContent",
-            detail: `Pi text generation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+            detail: "Pi returned invalid structured output.",
             cause,
           }),
-      });
-
-      const generated = yield* Schema.decodeEffect(Schema.fromJsonString(outputSchema))(
-        extractJsonObject(rawOutput),
-      ).pipe(
-        Effect.catchTag("SchemaError", (cause) =>
-          Effect.fail(
-            new TextGenerationError({
-              operation: "generatePrContent",
-              detail: "Pi returned invalid structured output.",
-              cause,
-            }),
-          ),
         ),
-      );
+      ),
+    );
 
-      return {
-        title: sanitizePrTitle(generated.title),
-        body: generated.body.trim(),
-      };
-    },
-  );
+    return {
+      title: sanitizePrTitle(generated.title),
+      body: generated.body.trim(),
+    };
+  });
 
-  const generateBranchName = Effect.fn("PiTextGeneration.generateBranchName")(
-    function* (input: Parameters<TextGenerationShape["generateBranchName"]>[0]) {
-      const { prompt, outputSchema } = buildBranchNamePrompt({
-        message: input.message,
-        attachments: input.attachments,
-      });
+  const generateBranchName = Effect.fn("PiTextGeneration.generateBranchName")(function* (
+    input: Parameters<TextGenerationShape["generateBranchName"]>[0],
+  ) {
+    const { prompt, outputSchema } = buildBranchNamePrompt({
+      message: input.message,
+      attachments: input.attachments,
+    });
 
-      const model = yield* Effect.promise(() =>
-        resolvePiTextModel(input.modelSelection, agentDir),
-      );
+    const model = yield* Effect.promise(() => resolvePiTextModel(input.modelSelection, agentDir));
 
-      const rawOutput = yield* Effect.tryPromise({
-        try: () => runPiPrompt({ cwd: input.cwd, prompt, agentDir, model }),
-        catch: (cause) =>
+    const rawOutput = yield* Effect.tryPromise({
+      try: () => runPiPrompt({ cwd: input.cwd, prompt, agentDir, model }),
+      catch: (cause) =>
+        new TextGenerationError({
+          operation: "generateBranchName",
+          detail: `Pi text generation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          cause,
+        }),
+    });
+
+    const generated = yield* Schema.decodeEffect(Schema.fromJsonString(outputSchema))(
+      extractJsonObject(rawOutput),
+    ).pipe(
+      Effect.catchTag("SchemaError", (cause) =>
+        Effect.fail(
           new TextGenerationError({
             operation: "generateBranchName",
-            detail: `Pi text generation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+            detail: "Pi returned invalid structured output.",
             cause,
           }),
-      });
-
-      const generated = yield* Schema.decodeEffect(Schema.fromJsonString(outputSchema))(
-        extractJsonObject(rawOutput),
-      ).pipe(
-        Effect.catchTag("SchemaError", (cause) =>
-          Effect.fail(
-            new TextGenerationError({
-              operation: "generateBranchName",
-              detail: "Pi returned invalid structured output.",
-              cause,
-            }),
-          ),
         ),
-      );
+      ),
+    );
 
-      return {
-        branch: sanitizeBranchFragment(generated.branch),
-      };
-    },
-  );
+    return {
+      branch: sanitizeBranchFragment(generated.branch),
+    };
+  });
 
-  const generateThreadTitle = Effect.fn("PiTextGeneration.generateThreadTitle")(
-    function* (input: Parameters<TextGenerationShape["generateThreadTitle"]>[0]) {
-      const { prompt, outputSchema } = buildThreadTitlePrompt({
-        message: input.message,
-        attachments: input.attachments,
-      });
+  const generateThreadTitle = Effect.fn("PiTextGeneration.generateThreadTitle")(function* (
+    input: Parameters<TextGenerationShape["generateThreadTitle"]>[0],
+  ) {
+    const { prompt, outputSchema } = buildThreadTitlePrompt({
+      message: input.message,
+      attachments: input.attachments,
+    });
 
-      const model = yield* Effect.promise(() =>
-        resolvePiTextModel(input.modelSelection, agentDir),
-      );
+    const model = yield* Effect.promise(() => resolvePiTextModel(input.modelSelection, agentDir));
 
-      const rawOutput = yield* Effect.tryPromise({
-        try: () => runPiPrompt({ cwd: input.cwd, prompt, agentDir, model }),
-        catch: (cause) =>
+    const rawOutput = yield* Effect.tryPromise({
+      try: () => runPiPrompt({ cwd: input.cwd, prompt, agentDir, model }),
+      catch: (cause) =>
+        new TextGenerationError({
+          operation: "generateThreadTitle",
+          detail: `Pi text generation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          cause,
+        }),
+    });
+
+    const generated = yield* Schema.decodeEffect(Schema.fromJsonString(outputSchema))(
+      extractJsonObject(rawOutput),
+    ).pipe(
+      Effect.catchTag("SchemaError", (cause) =>
+        Effect.fail(
           new TextGenerationError({
             operation: "generateThreadTitle",
-            detail: `Pi text generation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+            detail: "Pi returned invalid structured output.",
             cause,
           }),
-      });
-
-      const generated = yield* Schema.decodeEffect(Schema.fromJsonString(outputSchema))(
-        extractJsonObject(rawOutput),
-      ).pipe(
-        Effect.catchTag("SchemaError", (cause) =>
-          Effect.fail(
-            new TextGenerationError({
-              operation: "generateThreadTitle",
-              detail: "Pi returned invalid structured output.",
-              cause,
-            }),
-          ),
         ),
-      );
+      ),
+    );
 
-      return {
-        title: sanitizeThreadTitle(generated.title),
-      };
-    },
-  );
+    return {
+      title: sanitizeThreadTitle(generated.title),
+    };
+  });
 
   return {
     generateCommitMessage,
