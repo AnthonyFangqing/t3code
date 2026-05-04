@@ -371,17 +371,14 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
       const sessionPath = `${sessionsDir}/${input.threadId}.jsonl`;
       const sessionManager: SessionManager = SessionManager.open(sessionPath, sessionsDir, cwd);
 
-      let selectedModel: Model<any> | undefined;
       let thinkingLevel: string | undefined;
       if (input.modelSelection?.instanceId === boundInstanceId && input.modelSelection.model) {
-        selectedModel = yield* Effect.promise(() => resolvePiModel(modelRegistry, input.modelSelection!.model).catch(() => undefined));
         thinkingLevel = getModelSelectionStringOptionValue(input.modelSelection, "thinkingLevel");
       }
 
       const { session: agentSession } = yield* Effect.tryPromise({
         try: () => createAgentSession({
           cwd, agentDir, authStorage, modelRegistry, settingsManager, sessionManager,
-          ...(selectedModel ? { model: selectedModel } : {}),
           ...(thinkingLevel ? { thinkingLevel: thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" } : {}),
           tools: ["read", "bash", "edit", "write"],
           sessionStartEvent: { type: "session_start", reason: "new" },
@@ -391,6 +388,15 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
           detail: `Failed to create Pi agent session: ${cause instanceof Error ? cause.message : String(cause)}`, cause,
         }),
       });
+
+      // Resolve model selection AFTER extensions have loaded (extensions may add providers)
+      let selectedModel: Model<any> | undefined;
+      if (input.modelSelection?.instanceId === boundInstanceId && input.modelSelection.model) {
+        selectedModel = yield* Effect.promise(() => resolvePiModel(modelRegistry, input.modelSelection!.model).catch(() => undefined));
+        if (selectedModel) {
+          yield* Effect.promise(() => agentSession.setModel(selectedModel!).catch(() => {}));
+        }
+      }
 
       agentSession.setAutoCompactionEnabled(compactionFromRuntimeMode(input.runtimeMode));
 
