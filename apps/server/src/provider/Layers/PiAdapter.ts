@@ -59,6 +59,8 @@ interface PiSessionContext {
   sessionManager: SessionManager;
   /** Tracks last emitted text per assistant message to compute true deltas */
   emittedText: string;
+  /** Tool args from most recent tool_execution_start, keyed by toolCallId */
+  toolArgs: Map<string, unknown>;
 }
 
 function nowIso() { return new Date().toISOString(); }
@@ -82,33 +84,33 @@ function extractText(content: unknown): string {
   return "";
 }
 
+function toolDisplay(toolName: string, args: unknown): { title: string; detail: string | undefined } {
+  const a = (args && typeof args === "object") ? args as Record<string, unknown> : undefined;
+  switch (toolName) {
+    case "bash":
+      return { title: "Ran command", detail: typeof a?.command === "string" ? a.command : undefined };
+    case "read":
+      return { title: "Reading file", detail: typeof a?.path === "string" ? a.path : undefined };
+    case "edit":
+      return { title: "Editing file", detail: typeof a?.path === "string" ? a.path : undefined };
+    case "write":
+      return { title: "Writing file", detail: typeof a?.path === "string" ? a.path : undefined };
+    case "find":
+      return { title: "Finding files", detail: typeof a?.path === "string" ? a.path : undefined };
+    case "grep":
+      return { title: "Searching", detail: typeof a?.pattern === "string" ? a.pattern : undefined };
+    case "ls":
+      return { title: "Listing directory", detail: typeof a?.path === "string" ? a.path : undefined };
+    default:
+      return { title: toolName, detail: undefined };
+  }
+}
+
 function toolItemType(toolName: string): string {
   const n = toolName.toLowerCase();
   if (n === "bash") return "command_execution";
   if (n === "edit" || n === "write") return "file_change";
   return "dynamic_tool_call";
-}
-
-function toolDetail(toolName: string, args: unknown): string | undefined {
-  if (!args || typeof args !== "object") return undefined;
-  const a = args as Record<string, unknown>;
-  switch (toolName) {
-    case "bash":
-      return typeof a.command === "string" ? a.command : undefined;
-    case "read":
-      return typeof a.path === "string" ? a.path : undefined;
-    case "edit":
-    case "write":
-      return typeof a.path === "string" ? a.path : undefined;
-    case "find":
-      return typeof a.path === "string" ? a.path : undefined;
-    case "grep":
-      return typeof a.pattern === "string" ? a.pattern : undefined;
-    case "ls":
-      return typeof a.path === "string" ? a.path : undefined;
-    default:
-      return undefined;
-  }
 }
 
 export interface PiAdapterLiveOptions {
@@ -279,18 +281,24 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
           break;
         }
         case "tool_execution_start": {
-          const detail = toolDetail(event.toolName, event.args);
+          ctx.toolArgs.set(event.toolCallId, event.args);
+          const display = toolDisplay(event.toolName, event.args);
           yield* emit(mkEvent(threadId, "item.started", {
-            itemType: toolItemType(event.toolName), status: "inProgress", title: event.toolName,
-            ...(detail ? { detail } : {}),
+            itemType: toolItemType(event.toolName), status: "inProgress",
+            title: display.title,
+            ...(display.detail ? { detail: display.detail } : {}),
           }, tid, event.toolCallId));
           break;
         }
         case "tool_execution_end": {
-          const d = typeof event.result === "string" ? event.result : "";
+          const storedArgs = ctx.toolArgs.get(event.toolCallId);
+          ctx.toolArgs.delete(event.toolCallId);
+          const displayEnd = toolDisplay(event.toolName, storedArgs);
           yield* emit(mkEvent(threadId, "item.completed", {
-            itemType: toolItemType(event.toolName), status: event.isError ? "failed" as const : "completed" as const, title: event.toolName,
-            ...(d ? { detail: d } : {}),
+            itemType: toolItemType(event.toolName),
+            status: event.isError ? "failed" as const : "completed" as const,
+            title: displayEnd.title,
+            ...(displayEnd.detail ? { detail: displayEnd.detail } : {}),
           }, tid, event.toolCallId));
           break;
         }
@@ -396,6 +404,7 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
         agentSession, sessionScope, unsubscribeEvents: () => {},
         turnNumber: 0, activeTurnId: undefined, stopped, sessionManager,
         emittedText: "",
+        toolArgs: new Map(),
       };
 
       // Install approval hook based on runtime mode
