@@ -28,11 +28,17 @@ function toolItemType(toolName: string): string {
   return "dynamic_tool_call";
 }
 
-function toolDisplay(toolName: string, args: unknown): { title: string; detail: string | undefined } {
-  const a = (args && typeof args === "object") ? args as Record<string, unknown> : undefined;
+function toolDisplay(
+  toolName: string,
+  args: unknown,
+): { title: string; detail: string | undefined } {
+  const a = args && typeof args === "object" ? (args as Record<string, unknown>) : undefined;
   switch (toolName) {
     case "bash":
-      return { title: "Ran command", detail: typeof a?.command === "string" ? a.command : undefined };
+      return {
+        title: "Ran command",
+        detail: typeof a?.command === "string" ? a.command : undefined,
+      };
     case "read":
       return { title: "Reading file", detail: typeof a?.path === "string" ? a.path : undefined };
     case "edit":
@@ -44,7 +50,10 @@ function toolDisplay(toolName: string, args: unknown): { title: string; detail: 
     case "grep":
       return { title: "Searching", detail: typeof a?.pattern === "string" ? a.pattern : undefined };
     case "ls":
-      return { title: "Listing directory", detail: typeof a?.path === "string" ? a.path : undefined };
+      return {
+        title: "Listing directory",
+        detail: typeof a?.path === "string" ? a.path : undefined,
+      };
     default:
       return { title: toolName, detail: undefined };
   }
@@ -67,11 +76,13 @@ describe("PiAdapter helpers", () => {
     });
 
     it("extracts text from content array", () => {
-      expect(extractText([
-        { type: "text", text: "Hello" },
-        { type: "image", url: "..." },
-        { type: "text", text: " world" },
-      ])).toBe("Hello world");
+      expect(
+        extractText([
+          { type: "text", text: "Hello" },
+          { type: "image", url: "..." },
+          { type: "text", text: " world" },
+        ]),
+      ).toBe("Hello world");
     });
 
     it("returns empty string for empty array", () => {
