@@ -1,7 +1,7 @@
 /**
  * PiAdapter — in-process Pi coding agent adapter.
  *
- * Uses `@mariozechner/pi-coding-agent`'s `createAgentSession` SDK directly
+ * Uses `@earendil-works/pi-coding-agent`'s `createAgentSession` SDK directly
  * (no child process), matching how the Claude adapter uses
  * `@anthropic-ai/claude-agent-sdk`.
  *
@@ -24,9 +24,17 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
-import { Effect, Exit, Queue, Random, Ref, Scope, Stream } from "effect";
+import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Queue from "effect/Queue";
+import * as Random from "effect/Random";
+import * as Ref from "effect/Ref";
+import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 
-import type { AgentSession, AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   createAgentSession,
   SessionManager,
@@ -34,8 +42,8 @@ import {
   AuthStorage,
   SettingsManager,
   getAgentDir,
-} from "@mariozechner/pi-coding-agent";
-import type { Model } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-coding-agent";
+import type { Model } from "@earendil-works/pi-ai";
 
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 
@@ -65,7 +73,7 @@ interface PiSessionContext {
 }
 
 function nowIso() {
-  return new Date().toISOString();
+  return DateTime.formatIso(DateTime.nowUnsafe());
 }
 function newEventId(): ProviderRuntimeEvent["eventId"] {
   return Random.nextUUIDv4.pipe(Effect.runSync) as ProviderRuntimeEvent["eventId"];
@@ -253,8 +261,10 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
       ctx: PiSessionContext,
       threadId: ThreadId,
     ) {
+      const env = yield* Effect.context<never>();
+      const run = Effect.runPromiseWith(env);
       ctx.unsubscribeEvents = ctx.agentSession.subscribe((raw: AgentSessionEvent) => {
-        Effect.runPromise(translateAndEmit(raw, ctx, threadId)).catch(() => {});
+        run(translateAndEmit(raw, ctx, threadId)).catch(() => {});
       });
     });
 
@@ -316,16 +326,18 @@ export function makePiAdapter(piSettings: PiSettings, options?: PiAdapterLiveOpt
           break;
         }
         case "message_start": {
-          if (event.message.role === "assistant")
+          if (event.message.role === "assistant") {
+            const nowMs = yield* Clock.currentTimeMillis;
             yield* emit(
               mkEvent(
                 threadId,
                 "item.started",
                 { itemType: "assistant_message", status: "inProgress", title: "Assistant message" },
                 tid,
-                `asst-${Date.now()}`,
+                `asst-${nowMs}`,
               ),
             );
+          }
           break;
         }
         case "message_update": {

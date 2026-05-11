@@ -4,11 +4,11 @@
  * @module PiProvider.test
  */
 import { describe, it, expect } from "vitest";
-import { Schema } from "effect";
+import * as Schema from "effect/Schema";
 import { PiSettings, ProviderDriverKind } from "@t3tools/contracts";
 
 import { makePendingPiProvider, checkPiProviderStatus } from "./PiProvider.ts";
-import { Effect } from "effect";
+import * as Effect from "effect/Effect";
 
 const PROVIDER = ProviderDriverKind.make("pi");
 
@@ -23,15 +23,15 @@ function defaultPiSettings(
 
 describe("PiProvider", () => {
   describe("makePendingPiProvider", () => {
-    it("returns disabled snapshot when disabled", () => {
-      const snapshot = makePendingPiProvider(defaultPiSettings({ enabled: false }));
+    it("returns disabled snapshot when disabled", async () => {
+      const snapshot = await Effect.runPromise(makePendingPiProvider(defaultPiSettings({ enabled: false })));
       expect(snapshot.enabled).toBe(false);
       expect(snapshot.status).toBe("disabled");
       expect(snapshot.message).toContain("disabled");
     });
 
-    it("returns pending snapshot when enabled but not yet checked", () => {
-      const snapshot = makePendingPiProvider(defaultPiSettings());
+    it("returns pending snapshot when enabled but not yet checked", async () => {
+      const snapshot = await Effect.runPromise(makePendingPiProvider(defaultPiSettings()));
       expect(snapshot.enabled).toBe(true);
       expect(snapshot.status).toBe("warning");
       expect(snapshot.message).toContain("not been checked");

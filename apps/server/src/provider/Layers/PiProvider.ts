@@ -12,7 +12,8 @@ import {
   type ServerProviderModel,
   type PiSettings,
 } from "@t3tools/contracts";
-import { Effect } from "effect";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
 
 import { createModelCapabilities } from "@t3tools/shared/model";
 
@@ -66,13 +67,31 @@ function flattenPiModels(
   return result;
 }
 
-export const makePendingPiProvider = (piSettings: PiSettings): ServerProviderDraft => {
-  const checkedAt = new Date().toISOString();
+export const makePendingPiProvider = (
+  piSettings: PiSettings,
+): Effect.Effect<ServerProviderDraft> =>
+  Effect.gen(function* () {
+    const checkedAt = DateTime.formatIso(yield* DateTime.now);
 
-  if (!piSettings.enabled) {
+    if (!piSettings.enabled) {
+      return buildServerProvider({
+        presentation: PI_PRESENTATION,
+        enabled: false,
+        checkedAt,
+        models: [],
+        probe: {
+          installed: false,
+          version: null,
+          status: "warning",
+          auth: { status: "unknown" },
+          message: "Pi is disabled in T3 Code settings.",
+        },
+      });
+    }
+
     return buildServerProvider({
       presentation: PI_PRESENTATION,
-      enabled: false,
+      enabled: true,
       checkedAt,
       models: [],
       probe: {
@@ -80,34 +99,19 @@ export const makePendingPiProvider = (piSettings: PiSettings): ServerProviderDra
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Pi is disabled in T3 Code settings.",
+        message: "Pi provider status has not been checked in this session yet.",
       },
     });
-  }
-
-  return buildServerProvider({
-    presentation: PI_PRESENTATION,
-    enabled: true,
-    checkedAt,
-    models: [],
-    probe: {
-      installed: false,
-      version: null,
-      status: "warning",
-      auth: { status: "unknown" },
-      message: "Pi provider status has not been checked in this session yet.",
-    },
   });
-};
 
 export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(
   function* (): Effect.fn.Return<ServerProviderDraft> {
-    const checkedAt = new Date().toISOString();
+    const checkedAt = DateTime.formatIso(yield* DateTime.now);
 
     const result = yield* Effect.exit(
       Effect.gen(function* () {
         const { ModelRegistry, AuthStorage, SettingsManager, DefaultResourceLoader, getAgentDir } =
-          yield* Effect.tryPromise(() => import("@mariozechner/pi-coding-agent"));
+          yield* Effect.tryPromise(() => import("@earendil-works/pi-coding-agent"));
 
         const agentDir = getAgentDir();
         const cwd = process.cwd();

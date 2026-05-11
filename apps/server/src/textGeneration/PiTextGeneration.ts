@@ -4,10 +4,12 @@
  *
  * @module PiTextGeneration
  */
-import { Effect, Schema } from "effect";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 
 import { TextGenerationError, type ModelSelection } from "@t3tools/contracts";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
+import { extractJsonObject } from "@t3tools/shared/schemaJson";
 
 import { ServerConfig } from "../config.ts";
 import {
@@ -18,7 +20,6 @@ import {
 } from "./TextGenerationPrompts.ts";
 import { type TextGenerationShape } from "./TextGeneration.ts";
 import {
-  extractJsonObject,
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
@@ -28,7 +29,7 @@ async function resolvePiTextModel(
   modelSelection: ModelSelection | undefined,
   agentDir: string,
 ): Promise<{ provider: string; id: string } | undefined> {
-  const { ModelRegistry, AuthStorage } = await import("@mariozechner/pi-coding-agent");
+  const { ModelRegistry, AuthStorage } = await import("@earendil-works/pi-coding-agent");
   const authStorage = AuthStorage.create(undefined);
   const modelRegistry = ModelRegistry.create(authStorage, undefined);
   const models = await modelRegistry.getAvailable();
@@ -63,7 +64,7 @@ async function runPiPrompt(input: {
   model: { provider: string; id: string } | undefined;
 }): Promise<string> {
   const { createAgentSession, SessionManager, AuthStorage, ModelRegistry, SettingsManager } =
-    await import("@mariozechner/pi-coding-agent");
+    await import("@earendil-works/pi-coding-agent");
 
   const authStorage = AuthStorage.create(undefined);
   const modelRegistry = ModelRegistry.create(authStorage, undefined);

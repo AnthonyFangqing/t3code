@@ -8,7 +8,10 @@
  * @module provider/Drivers/PiDriver
  */
 import { PiSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
-import { Duration, Effect, Schema, Stream } from "effect";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 
 import { makePiTextGeneration } from "../../textGeneration/PiTextGeneration.ts";
 import { ServerConfig } from "../../config.ts";
@@ -22,6 +25,7 @@ import {
   type ProviderInstance,
 } from "../ProviderDriver.ts";
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
+import { makeManualOnlyProviderMaintenanceCapabilities } from "../providerMaintenance.ts";
 
 const DRIVER_KIND = ProviderDriverKind.make("pi");
 const SNAPSHOT_REFRESH_INTERVAL = Duration.minutes(5);
@@ -76,11 +80,18 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv> = {
 
       const checkProvider = Effect.map(checkPiProviderStatus(), stampIdentity);
 
+      const maintenanceCapabilities = makeManualOnlyProviderMaintenanceCapabilities({
+        provider: DRIVER_KIND,
+        packageName: null,
+      });
+
       const snapshot = yield* makeManagedServerProvider<PiSettings>({
+        maintenanceCapabilities,
         getSettings: Effect.succeed(effectiveConfig),
         streamSettings: Stream.never,
         haveSettingsChanged: () => false,
-        initialSnapshot: (settings) => stampIdentity(makePendingPiProvider(settings)),
+        initialSnapshot: (settings) =>
+          makePendingPiProvider(settings).pipe(Effect.map(stampIdentity)),
         checkProvider: checkProvider as Effect.Effect<ServerProvider, never, never>,
         refreshInterval: SNAPSHOT_REFRESH_INTERVAL,
       }).pipe(
